@@ -183,11 +183,22 @@ input, select{
     <!-- Login / Role Modal -->
     <div class="modal" id="loginModal">
         <div class="modal-content">
-            <h3>Choose Role</h3>
-            <p>Select how you want to use this app:</p>
-            <button onclick="loginAsAdmin()">Admin (requires password)</button>
-            <button onclick="loginAsViewer()">Viewer (monitor-only)</button>
-            <button onclick="closeLoginModal()">Cancel</button>
+            <h3 id="loginTitle">Choose Role</h3>
+            <div id="loginChoice">
+                <p>Select how you want to use this app:</p>
+                <button onclick="showAdminPassword()">Admin (requires password)</button>
+                <button onclick="loginAsViewer()">Viewer (monitor-only)</button>
+                <button onclick="closeLoginModal()">Cancel</button>
+            </div>
+
+            <div id="adminPasswordSection" style="display:none;">
+                <p>Enter Admin Password:</p>
+                <input type="password" id="adminPasswordInput" placeholder="Admin Password">
+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;">
+                    <button onclick="attemptAdminLogin()">Login as Admin</button>
+                    <button onclick="hideAdminPassword()">Back</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -218,9 +229,34 @@ function requireAdmin(actionCallback){
 }
 
 function loginAsAdmin(){
-    let input = prompt('🔐 Enter Admin Password:');
-    if(input===ADMIN_PASSWORD){ setRole('admin'); closeLoginModal(); initForRole(); alert('Logged in as Admin'); }
-    else alert('Access Denied');
+    // Open the masked password input instead of using prompt
+    showAdminPassword();
+}
+
+function showAdminPassword(){
+    document.getElementById('loginChoice').style.display = 'none';
+    document.getElementById('adminPasswordSection').style.display = 'block';
+    document.getElementById('adminPasswordInput').value = '';
+    setTimeout(()=>document.getElementById('adminPasswordInput').focus(),100);
+}
+
+function hideAdminPassword(){
+    document.getElementById('adminPasswordSection').style.display = 'none';
+    document.getElementById('loginChoice').style.display = 'block';
+}
+
+function attemptAdminLogin(){
+    const input = document.getElementById('adminPasswordInput').value;
+    if(input === ADMIN_PASSWORD){
+        setRole('admin');
+        closeLoginModal();
+        initForRole();
+        alert('Logged in as Admin');
+    } else {
+        alert('Access Denied');
+        document.getElementById('adminPasswordInput').value = '';
+        document.getElementById('adminPasswordInput').focus();
+    }
 }
 
 function loginAsViewer(){ setRole('viewer'); closeLoginModal(); initForRole(); alert('Logged in as Viewer'); }
