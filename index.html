@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Computer Shop Attendance</title>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    font-family: Arial;
+    margin:0;
+    padding:15px;
+    background:#f4f6f9;
+    text-align:center;
+}
+
+h2{
+    margin:10px 0 20px 0;
+    font-size:20px;
+}
+
+/* Buttons */
+button{
+    padding:8px 12px;
+    margin:5px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+    font-size:14px;
+}
+
+.add-btn{ background:#007bff; color:white; }
+.reset-btn{ background:#dc3545; color:white; }
+.clear-btn{ background:#ffc107; font-size:12px; }
+
+/* Calendar */
+.calendar{
+    width:100%;
+    max-width:420px;
+    margin:auto;
+    display:grid;
+    grid-template-columns: repeat(7,1fr);
+    gap:6px;
+}
+
+.day{
+    background:#dcdcdc;
+    padding:12px 0;
+    border-radius:8px;
+    font-weight:bold;
+    font-size:14px;
+    cursor:pointer;
+}
+
+.attended{ background:#4da6ff !important; color:white; }
+.free{ background:#28a745 !important; color:white; }
+
+/* Monitoring */
+.monitor{
+    margin-top:25px;
+    background:white;
+    padding:10px;
+    border-radius:10px;
+    overflow-x:auto;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:650px;
+    font-size:12px;
+}
+
+th,td{
+    border:1px solid #ddd;
+    padding:6px;
+    text-align:center;
+}
+
+th{
+    background:#333;
+    color:white;
+}
+
+.eligible{
+    background:#d4edda;
+    font-weight:bold;
+}
+
+/* Modal */
+.modal{
+    display:none;
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.6);
+}
+
+.modal-content{
+    background:white;
+    width:90%;
+    max-width:350px;
+    padding:20px;
+    margin:80px auto;
+    border-radius:10px;
+}
+
+input, select{
+    width:100%;
+    padding:8px;
+    margin-top:10px;
+}
+
+@media(max-width:480px){
+    button{
+        width:100%;
+        margin:5px 0;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="topBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+    <h2 id="monthTitle"></h2>
+    <div id="roleInfo">
+        <span id="currentRole"></span>
+        <button id="logoutBtn" style="display:none;" onclick="logout()">Logout</button>
+    </div>
+</div>
+
+<div style="margin-top:10px;">
+    <button class="add-btn" id="addBtn" onclick="openAddClient()">➕ Add Client</button>
+    <button class="reset-btn" id="resetBtn" onclick="confirmReset()">🗑 Reset All Data</button>
+    <button class="clear-btn" id="loginBtn" style="display:none;" onclick="showLoginModal()">Login/Change Role</button>
+</div>
+
+<div class="calendar" id="calendar"></div>
+
+<div class="monitor">
+    <h3>📊 Client Monitoring</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Total Logins</th>
+                <th>Streak</th>
+                <th>Absent Days</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="monitorTable"></tbody>
+    </table>
+</div>
+
+<!-- Attendance Modal -->
+<div class="modal" id="modal">
+    <div class="modal-content">
+        <h3 id="selectedDate"></h3>
+        <select id="userSelect"></select>
+        <button onclick="saveAttendance()">Mark Attendance</button>
+        <button onclick="closeModal()">Cancel</button>
+    </div>
+</div>
+
+<!-- Add Client Modal -->
+<div class="modal" id="addModal">
+    <div class="modal-content">
+        <h3>Add New Client</h3>
+        <input type="text" id="newClientName" placeholder="Client Name">
+        <button onclick="addClient()">Add</button>
+        <button onclick="closeAddModal()">Cancel</button>
+    </div>
+</div>
+
+    <!-- Login / Role Modal -->
+    <div class="modal" id="loginModal">
+        <div class="modal-content">
+            <h3>Choose Role</h3>
+            <p>Select how you want to use this app:</p>
+            <button onclick="loginAsAdmin()">Admin (requires password)</button>
+            <button onclick="loginAsViewer()">Viewer (monitor-only)</button>
+            <button onclick="closeLoginModal()">Cancel</button>
+        </div>
+    </div>
+
+<script>
+
+const ADMIN_PASSWORD = "0909123";
+
+/* Role management: values are 'admin' or 'viewer' */
+function getRole(){ return localStorage.getItem('role') || null; }
+function setRole(r){ if(r) localStorage.setItem('role', r); else localStorage.removeItem('role'); }
+
+function updateRoleUI(){
+    const role = getRole();
+    document.getElementById('currentRole').innerText = role ? ('Role: '+role.toUpperCase()) : 'Not logged in';
+    document.getElementById('logoutBtn').style.display = role ? 'inline-block' : 'none';
+    document.getElementById('loginBtn').style.display = 'inline-block';
+    document.getElementById('addBtn').style.display = role==='admin' ? 'inline-block' : 'none';
+    document.getElementById('resetBtn').style.display = role==='admin' ? 'inline-block' : 'none';
+    // Viewer should only see the monitor
+    document.getElementById('calendar').style.display = role==='viewer' ? 'none' : 'grid';
+}
+
+function requireAdmin(actionCallback){
+    const role = getRole();
+    if(role==='admin'){ actionCallback(); return; }
+    alert('Admins only: please login as Admin to perform this action.');
+    showLoginModal();
+}
+
+function loginAsAdmin(){
+    let input = prompt('🔐 Enter Admin Password:');
+    if(input===ADMIN_PASSWORD){ setRole('admin'); closeLoginModal(); initForRole(); alert('Logged in as Admin'); }
+    else alert('Access Denied');
+}
+
+function loginAsViewer(){ setRole('viewer'); closeLoginModal(); initForRole(); alert('Logged in as Viewer'); }
+
+function logout(){ setRole(null); location.reload(); }
+
+function showLoginModal(){ document.getElementById('loginModal').style.display='block'; }
+function closeLoginModal(){ document.getElementById('loginModal').style.display='none'; }
+
+let today = new Date();
+let currentMonth = today.getMonth();
+let currentYear = today.getFullYear();
+let daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+let monthName = today.toLocaleString('default', { month: 'long' });
+
+document.getElementById("monthTitle").innerText =
+    monthName + " " + currentYear + " Attendance";
+
+let users = JSON.parse(localStorage.getItem("users")) || {};
+let selectedDay = null;
+
+/* ================= ADMIN PASSWORD CHECK ================= */
+
+function confirmReset(){ requireAdmin(resetAllData); }
+
+/* ================= CALENDAR ================= */
+
+function generateCalendar(){
+    let calendar = document.getElementById("calendar");
+    calendar.innerHTML = "";
+
+    const role = getRole();
+    for(let i=1;i<=daysInMonth;i++){
+        let div = document.createElement("div");
+        div.classList.add("day");
+        div.innerText = i;
+        // Only allow opening modal (marking attendance) for admin
+        if(role==='admin') div.onclick = ()=>openModal(i);
+        calendar.appendChild(div);
+    }
+}
+
+function openModal(day){
+    if(getRole()!=='admin'){ alert('Admins only: cannot mark attendance.'); return; }
+    selectedDay = day;
+    document.getElementById("modal").style.display="block";
+    document.getElementById("selectedDate").innerText=
+        monthName+" "+day+", "+currentYear;
+
+    let select = document.getElementById("userSelect");
+    select.innerHTML="";
+    for(let name in users){
+        let option=document.createElement("option");
+        option.value=name;
+        option.text=name;
+        select.appendChild(option);
+    }
+}
+
+function closeModal(){
+    document.getElementById("modal").style.display="none";
+}
+
+/* ================= ADD CLIENT ================= */
+
+function openAddClient(){
+    if(getRole()!=='admin'){ alert('Admins only: cannot add clients.'); return; }
+    document.getElementById("addModal").style.display="block";
+}
+
+function closeAddModal(){
+    document.getElementById("addModal").style.display="none";
+}
+
+function addClient(){
+    let name = document.getElementById("newClientName").value.trim();
+    if(name==="") return alert("Enter client name");
+
+    if(!users[name]){
+        users[name] = {
+            streak:0,
+            lastDay:0,
+            totalLogins:0,
+            eligible:false,
+            freeCredits:0,
+            records:{}
+        };
+    }
+
+    saveData();
+    updateMonitoring();
+    closeAddModal();
+}
+
+/* ================= ATTENDANCE ================= */
+
+function saveAttendance(){
+    if(getRole()!=='admin'){ alert('Admins only'); return; }
+    let name = document.getElementById("userSelect").value;
+    if(!name) return alert("No client selected");
+
+    let user = users[name];
+
+    // Prevent double-marking the same day for the same user
+    if(user.records[selectedDay]){
+        return alert(name + " already has attendance recorded for day " + selectedDay + ".");
+    }
+
+    // Consecutive-day check: only increment streak when selected day is exactly previous + 1
+    if(user.lastDay && (selectedDay === user.lastDay + 1)){
+        user.streak = (user.streak || 0) + 1;
+    } else {
+        // Not consecutive: start a new streak at 1 (this day alone)
+        user.streak = 1;
+    }
+
+    user.lastDay = selectedDay;
+    user.totalLogins = (user.totalLogins || 0) + 1;
+    user.records[selectedDay] = "attended";
+
+    // Award free credits only when streak reaches 4 straight days
+    if(user.streak >= 4){
+        user.records[selectedDay] = "free"; // mark the day visually as free-earned
+        user.freeCredits = (user.freeCredits || 0) + 1;
+        user.eligible = true;
+        user.streak = 0; // reset streak after awarding
+        alert("🎉 " + name + " earned FREE TIME! (Free credits: " + user.freeCredits + ")");
+    }
+
+    saveData();
+    updateCalendar();
+    updateMonitoring();
+    closeModal();
+}
+
+function updateCalendar(){
+    let days = document.querySelectorAll(".day");
+    days.forEach(day=>{
+        day.classList.remove("attended","free");
+    });
+
+    for(let name in users){
+        for(let day in users[name].records){
+            let index = day-1;
+            if(index < daysInMonth){
+                if(users[name].records[day]==="attended"){
+                    days[index].classList.add("attended");
+                }
+                if(users[name].records[day]==="free"){
+                    days[index].classList.add("free");
+                }
+            }
+        }
+    }
+}
+
+function updateMonitoring(){
+    let table = document.getElementById("monitorTable");
+    table.innerHTML="";
+
+    for(let name in users){
+        let user = users[name];
+        let attendedDays = Object.keys(user.records).map(Number);
+        let absentDays = [];
+
+        for(let i=1;i<=daysInMonth;i++){
+            if(!attendedDays.includes(i)){
+                absentDays.push(i);
+            }
+        }
+
+        let status = (user.freeCredits && user.freeCredits > 0) ? ("🎉 FREE AVAILABLE ("+user.freeCredits+")") : "Active";
+        let rowClass = (user.freeCredits && user.freeCredits > 0) ? "eligible" : "";
+
+        // Only show the Clear action to admins
+        const role = getRole();
+        let actionHtml = '';
+        if(role === 'admin'){
+            actionHtml = `<button class="clear-btn" onclick="clearStatus('${name}')">Clear</button>`;
+        }
+
+        let row = `
+            <tr class="${rowClass}">
+                <td>${name}</td>
+                <td>${user.totalLogins}</td>
+                <td>${user.streak}</td>
+                <td>${absentDays.join(", ")}</td>
+                <td>${status}</td>
+                <td>${actionHtml}</td>
+            </tr>
+        `;
+
+        table.innerHTML += row;
+    }
+}
+
+function clearStatus(name){
+    // Ensure only admins can clear status
+    if(getRole() !== 'admin'){
+        alert('Admins only: cannot clear status.');
+        showLoginModal();
+        return;
+    }
+
+    users[name].streak = 0;
+    users[name].eligible = false;
+    users[name].freeCredits = 0;
+    saveData();
+    updateMonitoring();
+}
+
+function resetAllData(){
+    if(confirm("Delete ALL attendance data?")){
+        localStorage.removeItem("users");
+        users = {};
+        updateCalendar();
+        updateMonitoring();
+        alert("All data cleared!");
+    }
+}
+
+function saveData(){
+    localStorage.setItem("users",JSON.stringify(users));
+}
+
+// Initialize page based on role
+function initForRole(){
+    updateRoleUI();
+    generateCalendar();
+    updateCalendar();
+    updateMonitoring();
+}
+
+// If no role selected, force role choice on first load
+if(!getRole()){
+    showLoginModal();
+} else {
+    initForRole();
+}
+
+// Expose a safe hook: open login if user wants to change
+document.getElementById('loginBtn').style.display='inline-block';
+
+</script>
+
+</body>
+</html>
